@@ -50,15 +50,13 @@ function main() {
     gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
 
 
-    const numPoints = 100;
+    const numPoints = 10;
     // Control points for the top outward curve
     const topCurveP0 = [-0.5, 0.5];  // Starting point
-    const topCurveP1 = [-0.3, 0.8];     // Control point for maximum curvature
-    const topCurveP2 = [0, 0.7];   // Ending point
+    const topCurveP1 = [0, 0.8];     // Control point for maximum curvature
+    const topCurveP2 = [0.5, 0.5];   // Ending point
 
-    const topCurve2P0 = [0, 0.75];  // Starting point
-    const topCurve2P1 = [0.3, 0.8];     // Control point for maximum curvature
-    const topCurve2P2 = [0.5, 0.5];   // Ending point
+
 
     // Control points for the first inward curve (left side)
     const lowerCurve1P0 = [0.5, 0.5];  // Starting point (same as top curve end)
@@ -79,20 +77,16 @@ function main() {
 
 // Generate points for the top outward curve
     let topCurvePoints = [];
-    for (let i = 0; i <= numPoints; i++) {
+    for (let i = 0; i < numPoints; i++) {
         const t = i / numPoints;
         topCurvePoints.push(getQuadraticBezierPoint(t, topCurveP0, topCurveP1, topCurveP2));
     }
 
-    let topCurvePoints2 = [];
-    for (let i = 0; i <= numPoints; i++) {
-        const t = i / numPoints;
-        topCurvePoints.push(getQuadraticBezierPoint(t, topCurve2P0, topCurve2P1, topCurve2P2));
-    }
+
 
 // Generate points for the first inward curve
     let lowerCurve1Points = [];
-    for (let i = 0; i <= numPoints; i++) {
+    for (let i = 0; i < numPoints; i++) {
         const t = i / numPoints;
         lowerCurve1Points.push(getQuadraticBezierPoint(t, lowerCurve1P0, lowerCurve1P1, lowerCurve1P2));
     }
@@ -100,35 +94,74 @@ function main() {
 
 // Generate points for the second inward curve
     let lowerCurve2Points = [];
-    for (let i = 0; i <= numPoints; i++) {
+    for (let i = 0; i < numPoints; i++) {
         const t = i / numPoints;
         lowerCurve2Points.push(getQuadraticBezierPoint(t, lowerCurve2P0, lowerCurve2P1, lowerCurve2P2));
     }
-    let newCenterPoint = [0, 0.7]; // Assuming you want to make P1 the new center
-    let reorderedPoints = [newCenterPoint].concat(
-        topCurvePoints,
-        topCurvePoints2,
-        lowerCurve1Points,
-        lowerCurve2Points
-    );
+
 
     // Combine the points into one array to draw a closed shape
     let umbrellaShapePoints = topCurvePoints.concat(lowerCurve1Points, lowerCurve2Points);
+    console.log(umbrellaShapePoints);
+    /*
+    const diagonals = makeYMonotone(umbrellaShapePoints);
+    console.log("Diagonals to make the polygon y-monotone:", diagonals);
+    const subPolys = splitPolygonIntoMonotoneParts(umbrellaShapePoints, diagonals)
+    console.log("asdg")
+    console.log(subPolys)
+    // Combine all points for the umbrella shape into a flat array
+    const umbrellaShapePointsFlat = umbrellaShapePoints.flat(); // Ensuring a flat array of vertices
 
-    console.log(umbrellaShapePoints)
-    // Create buffer for the umbrella shape points
-    const umbrellaBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, umbrellaBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(reorderedPoints.flat()), gl.STATIC_DRAW);
+// Triangulate the shape
+    //const triangles = monotoneTriangulate(umbrellaShapePoints);
 
-// Draw the umbrella shape
-    gl.bindBuffer(gl.ARRAY_BUFFER, umbrellaBuffer);
+    subPolys.forEach(subPolygon => {
+        const triangles = monotoneTriangulation(subPolygon);
+
+        console.log(triangles);
+        const triangleIndicesFlat = triangles.flat(); // Ensuring a flat array of indices
+
+        const subPolygonflat = subPolygon.flat()
+// Create the vertex buffer
+        const vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(subPolygonflat), gl.STATIC_DRAW);
+
+// Create the index buffer
+        const indexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(triangleIndicesFlat), gl.STATIC_DRAW);
+
+// Link the position attribute
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+// Set the color for the triangles
+        gl.uniform4f(colorLocation, 0.8, 0.2, 0.2, 1.0); // Red color
+
+// Clear the canvas before drawing
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+// Draw the triangles using the index buffer
+        gl.drawElements(gl.TRIANGLES, triangleIndicesFlat.length, gl.UNSIGNED_SHORT, 0);
+    });
+    */
+// Flatten the triangles into a single array of indices
+
+    const triangulator = new PolygonTriangulation();
+    const triangleVertices = triangulator.triangulate(umbrellaShapePoints);
+    const vertexCount = triangulator.getVertexCount();
+
+// WebGL setup and drawing
+    const triangleBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, triangleBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangleVertices), gl.STATIC_DRAW);
+
+// Draw the triangles
+    gl.bindBuffer(gl.ARRAY_BUFFER, triangleBuffer);
     gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(positionLocation);
-
-// Set the color for the umbrella fabric
-    gl.uniform4f(colorLocation, 0.8, 0.2, 0.2, 1.0); // Red color for the fabric
-    gl.drawArrays(gl.TRIANGLE_FAN, 0, reorderedPoints.length);
+    gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
 
 
 
