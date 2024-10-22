@@ -1,91 +1,116 @@
+class PolygonTriangulation {
+    constructor() {
+        this.triangles = [];
+    }
 
+    static getSignedArea(vertices) {
+        let area = 0;
+        for (let i = 0; i < vertices.length; i++) {
+            const j = (i + 1) % vertices.length;
+            area += vertices[i][0] * vertices[j][1];
+            area -= vertices[j][0] * vertices[i][1];
+        }
+        return area / 2;
+    }
 
-function isConvex(p1, p2, p3) {
-    // Calculate the cross product to determine if the angle is convex
-    const crossProduct = (p2[0] - p1[0]) * (p3[1] - p1[1]) - (p3[0] - p1[0]) * (p2[1] - p1[1]);
-    return crossProduct > 0; // Positive means the angle is convex
-}
+    static makeCounterClockwise(vertices) {
+        const signedArea = this.getSignedArea(vertices);
+        return signedArea < 0 ? vertices.reverse() : [...vertices];
+    }
 
-function pointInTriangle(pt, p1, p2, p3) {
-    const dX = pt[0] - p3[0];
-    const dY = pt[1] - p3[1];
-    const dX21 = p2[0] - p3[0];
-    const dY12 = p1[1] - p3[1];
-    const D = dY12 * (p1[0] - p3[0]) + dX21 * (p1[1] - p3[1]);
-    const s = dY12 * dX + dX21 * dY;
-    const t = (p3[1] - p1[1]) * dX + (p1[0] - p3[0]) * dY;
-    return s >= 0 && t >= 0 && (s + t) <= D;
-}
+    static isConvex(prev, current, next) {
+        const dx1 = current[0] - prev[0];
+        const dy1 = current[1] - prev[1];
+        const dx2 = next[0] - current[0];
+        const dy2 = next[1] - current[1];
+        return dx1 * dy2 - dy1 * dx2 > 0;
+    }
 
-function earClipping(vertices) {
-    const triangles = [];
-    const vertexIndices = Array.from({ length: vertices.length / 2 }, (_, i) => i); // Vertex index list
+    static isPointInTriangle(point, triangle) {
+        const [x, y] = point;
+        const [[x1, y1], [x2, y2], [x3, y3]] = triangle;
 
-    while (vertexIndices.length > 3) {
-        let earFound = false;
+        const denominator = ((y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3));
+        const a = ((y2 - y3) * (x - x3) + (x3 - x2) * (y - y3)) / denominator;
+        const b = ((y3 - y1) * (x - x3) + (x1 - x3) * (y - y3)) / denominator;
+        const c = 1 - a - b;
 
-        for (let i = 0; i < vertexIndices.length; i++) {
-            const prev = (i - 1 + vertexIndices.length) % vertexIndices.length;
-            const current = i;
-            const next = (i + 1) % vertexIndices.length;
+        const epsilon = 1e-10;
+        return a >= -epsilon && b >= -epsilon && c >= -epsilon;
+    }
 
-            const p1 = [vertices[vertexIndices[prev] * 2], vertices[vertexIndices[prev] * 2 + 1]];
-            const p2 = [vertices[vertexIndices[current] * 2], vertices[vertexIndices[current] * 2 + 1]];
-            const p3 = [vertices[vertexIndices[next] * 2], vertices[vertexIndices[next] * 2 + 1]];
+    static isEar(i, vertices) {
+        const n = vertices.length;
+        const prev = vertices[(i - 1 + n) % n];
+        const current = vertices[i];
+        const next = vertices[(i + 1) % n];
 
-            if (isConvex(p1, p2, p3)) {
-                // Check if any other vertex lies inside this triangle
-                let isEar = true;
-                for (let j = 0; j < vertexIndices.length; j++) {
-                    if (j !== prev && j !== current && j !== next) {
-                        const p = [vertices[vertexIndices[j] * 2], vertices[vertexIndices[j] * 2 + 1]];
-                        if (pointInTriangle(p, p1, p2, p3)) {
-                            isEar = false; // Vertex inside, not a valid ear
-                            break;
-                        }
-                    }
-                }
+        if (!this.isConvex(prev, current, next)) {
+            return false;
+        }
 
-                if (isEar) {
-                    // Save the ear as a triangle
-                    triangles.push(p1, p2, p3);
-                    vertexIndices.splice(current, 1); // Remove the ear tip from the polygon
-                    earFound = true;
-                    break; // Start over to find the next ear
-                }
+        const triangle = [prev, current, next];
+
+        for (let j = 0; j < vertices.length; j++) {
+            if (j === (i - 1 + n) % n || j === i || j === (i + 1) % n) continue;
+            if (this.isPointInTriangle(vertices[j], triangle)) {
+                return false;
             }
         }
 
-        if (!earFound) {
-            console.error("No valid ears found; the polygon might be too complex or not properly defined.");
-            break;
+        return true;
+    }
+
+    triangulate(inputVertices) {
+        if (inputVertices.length < 3) return [];
+
+        this.triangles = [];
+        let vertices = PolygonTriangulation.makeCounterClockwise([...inputVertices]);
+
+        while (vertices.length > 3) {
+            const n = vertices.length;
+            let earFound = false;
+
+            for (let i = 0; i < n; i++) {
+                if (PolygonTriangulation.isEar(i, vertices)) {
+                    this.triangles.push([
+                        vertices[(i - 1 + n) % n],
+                        vertices[i],
+                        vertices[(i + 1) % n]
+                    ]);
+
+                    vertices.splice(i, 1);
+                    earFound = true;
+                    break;
+                }
+            }
+
+            if (!earFound) {
+                vertices.reverse();
+                if (this.triangles.length === 0) {
+                    console.error("Unable to triangulate polygon. Please check vertex order.");
+                    return [];
+                }
+                break;
+            }
         }
+
+        if (vertices.length === 3) {
+            this.triangles.push(vertices);
+        }
+
+        // Convert triangles to WebGL-compatible format (flattened array of vertices)
+        return this.getWebGLVertices();
     }
 
-    // Add the remaining triangle
-    if (vertexIndices.length === 3) {
-        const p1 = [vertices[vertexIndices[0] * 2], vertices[vertexIndices[0] * 2 + 1]];
-        const p2 = [vertices[vertexIndices[1] * 2], vertices[vertexIndices[1] * 2 + 1]];
-        const p3 = [vertices[vertexIndices[2] * 2], vertices[vertexIndices[2] * 2 + 1]];
-        triangles.push(p1, p2, p3);
+    // New method to get vertices in WebGL-compatible format
+    getWebGLVertices() {
+        // Flatten the triangles into a single array of vertices
+        return this.triangles.flat().flat();
     }
 
-    return triangles;
+    // Get the number of vertices (for drawArrays)
+    getVertexCount() {
+        return this.triangles.length * 3; // 3 vertices per triangle
+    }
 }
-/*
-// Example usage:
-const triangles = earClipping(polygonVertices);
-console.log("Triangles:", triangles);
-
-
-// Create a buffer for the triangles
-const triangleBuffer = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, triangleBuffer);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangles.flat()), gl.STATIC_DRAW);
-
-// Draw the triangles
-gl.bindBuffer(gl.ARRAY_BUFFER, triangleBuffer);
-gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-gl.enableVertexAttribArray(positionLocation);
-gl.drawArrays(gl.TRIANGLES, 0, triangles.length); // Number of points = number of vertices in triangles
-*/
